@@ -2,9 +2,12 @@ import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Loader2, Trash2, Eye, RefreshCw } from "lucide-react";
+import { Loader2, Trash2, Eye, RefreshCw, Search } from "lucide-react";
+import { fetchWithRetry } from "@/lib/apiClient";
+import { useDebounce } from "@/hooks/useDebounce";
 
 // Define the type for a single carte record
 interface Carte {
@@ -30,43 +33,47 @@ export function CarteList() {
     const [cartes, setCartes] = useState<Carte[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
-    const fetchCartes = useCallback(async (showToast = false) => {
+    const fetchCartes = useCallback(async (query: string, showToast = false) => {
         setIsLoading(true);
         setError(null);
         const toastId = showToast ? toast.loading("一覧を更新中...") : undefined;
         try {
-            const response = await fetch('http://localhost:5000/api/cartes');
+            const url = `http://localhost:5000/api/cartes?q=${encodeURIComponent(query)}`;
+            const response = await fetchWithRetry(url);
             if (!response.ok) {
-                throw new Error('カルテの取得に失敗しました。');
+                const errorData = await response.json().catch(() => ({ error: 'カルテの取得に失敗しました。' }));
+                throw new Error(errorData.error);
             }
             const data = await response.json();
             setCartes(data);
             if (showToast) toast.success("一覧を更新しました。", { id: toastId });
         } catch (err: any) {
             setError(err.message);
-            if (showToast) toast.error(err.message, { id: toastId });
-            else toast.error(err.message);
+            if (toastId) toast.error(err.message, { id: toastId });
         } finally {
             setIsLoading(false);
         }
     }, []);
 
     useEffect(() => {
-        fetchCartes();
-    }, [fetchCartes]);
+        // Fetch cartes whenever the debounced search query changes.
+        fetchCartes(debouncedSearchQuery);
+    }, [debouncedSearchQuery, fetchCartes]);
 
     const handleDelete = async (carteId: number) => {
         const toastId = toast.loading("カルテを削除しています...");
         try {
-            const response = await fetch(`http://localhost:5000/api/cartes/${carteId}`, {
+            const response = await fetchWithRetry(`http://localhost:5000/api/cartes/${carteId}`, {
                 method: 'DELETE',
             });
             if (!response.ok) {
-                throw new Error('削除に失敗しました。');
+                const errorData = await response.json().catch(() => ({ error: '削除に失敗しました。' }));
+                throw new Error(errorData.error);
             }
             toast.success("カルテを削除しました。", { id: toastId });
-            // Refresh the list
             setCartes(prevCartes => prevCartes.filter(c => c.id !== carteId));
         } catch (err: any) {
             toast.error(`削除エラー: ${err.message}`, { id: toastId });
@@ -77,27 +84,42 @@ export function CarteList() {
         return (
              <div className="text-destructive p-8 text-center">
                 <p>{error}</p>
-                <Button onClick={() => fetchCartes(true)} className="mt-4">再試行</Button>
+                <Button onClick={() => fetchCartes(debouncedSearchQuery, true)} className="mt-4">再試行</Button>
             </div>
         );
     }
 
     return (
         <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                    <CardTitle>カルテ一覧</CardTitle>
-                    <CardDescription>保存されているカウンセリング記録の一覧です。({cartes.length}件)</CardDescription>
+            <CardHeader>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div>
+                        <CardTitle>カルテ一覧</CardTitle>
+                        <CardDescription>保存されているカウンセリング記録の一覧です。({cartes.length}件)</CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2">
+                         <div className="relative w-full max-w-sm">
+                            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                placeholder="顧客名で検索..."
+                                className="pl-8"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                        </div>
+                        <Button variant="outline" size="icon" onClick={() => fetchCartes(debouncedSearchQuery, true)} disabled={isLoading}>
+                            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                        </Button>
+                    </div>
                 </div>
-                <Button variant="outline" size="icon" onClick={() => fetchCartes(true)} disabled={isLoading}>
-                    <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-                </Button>
             </CardHeader>
             <CardContent>
                  {isLoading && cartes.length === 0 ? (
                     <div className="flex justify-center items-center p-8"><Loader2 className="h-8 w-8 animate-spin" /></div>
                  ) : cartes.length === 0 ? (
-                    <p className="text-center text-muted-foreground py-8">保存されているカルテはありません。</p>
+                    <div className="text-center text-muted-foreground py-8">
+                        <p>{searchQuery ? `「${searchQuery}」に一致するカルテはありません。` : "保存されているカルテはありません。"}</p>
+                    </div>
                 ) : (
                     <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                         {cartes.map((carte) => (
@@ -113,26 +135,20 @@ export function CarteList() {
                                 </CardContent>
                                 <CardFooter className="flex justify-end gap-2">
                                     <Dialog>
-                                        <DialogTrigger asChild>
-                                            <Button variant="outline" size="sm"><Eye className="mr-2 h-4 w-4"/>詳細</Button>
-                                        </DialogTrigger>
+                                        <DialogTrigger asChild><Button variant="outline" size="sm"><Eye className="mr-2 h-4 w-4"/>詳細</Button></DialogTrigger>
                                         <DialogContent className="max-w-3xl">
                                             <DialogHeader>
                                                 <DialogTitle>カルテ詳細: {carte.customer_name}</DialogTitle>
-                                                <DialogDescription>
-                                                    作成日時: {new Date(carte.created_at).toLocaleString('ja-JP')}
-                                                </DialogDescription>
+                                                <DialogDescription>作成日時: {new Date(carte.created_at).toLocaleString('ja-JP')}</DialogDescription>
                                             </DialogHeader>
                                             <div className="space-y-4 max-h-[70vh] overflow-y-auto p-4">
                                                 <h4 className="font-semibold">顧客情報</h4>
                                                 <p><strong>フリガナ:</strong> {carte.customer_name_kana || '未登録'}</p>
                                                 <p><strong>電話番号:</strong> {carte.phone_number || '未登録'}</p>
                                                 <p><strong>メール:</strong> {carte.email || '未登録'}</p>
-                                                <hr/>
-                                                <h4 className="font-semibold">カウンセリング内容</h4>
+                                                <hr/><h4 className="font-semibold">カウンセリング内容</h4>
                                                 <p className="whitespace-pre-wrap text-sm bg-muted p-2 rounded-md">{carte.counseling_content || '未登録'}</p>
-                                                <hr/>
-                                                <h4 className="font-semibold">AI分析結果</h4>
+                                                <hr/><h4 className="font-semibold">AI分析結果</h4>
                                                 {carte.ai_analysis ? (
                                                     <div className="text-sm space-y-1">
                                                         <p><strong>顧客の要望:</strong> {carte.ai_analysis.customer_requests}</p>
@@ -146,15 +162,11 @@ export function CarteList() {
                                         </DialogContent>
                                     </Dialog>
                                     <AlertDialog>
-                                        <AlertDialogTrigger asChild>
-                                            <Button variant="destructive" size="sm"><Trash2 className="mr-2 h-4 w-4"/>削除</Button>
-                                        </AlertDialogTrigger>
+                                        <AlertDialogTrigger asChild><Button variant="destructive" size="sm"><Trash2 className="mr-2 h-4 w-4"/>削除</Button></AlertDialogTrigger>
                                         <AlertDialogContent>
                                             <AlertDialogHeader>
                                                 <AlertDialogTitle>本当に削除しますか？</AlertDialogTitle>
-                                                <AlertDialogDescription>
-                                                    顧客「{carte.customer_name}」のカルテを完全に削除します。この操作は元に戻せません。
-                                                </AlertDialogDescription>
+                                                <AlertDialogDescription>顧客「{carte.customer_name}」のカルテを完全に削除します。この操作は元に戻せません。</AlertDialogDescription>
                                             </AlertDialogHeader>
                                             <AlertDialogFooter>
                                                 <AlertDialogCancel>キャンセル</AlertDialogCancel>

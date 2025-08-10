@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Mic, MicOff, Play, Square, Loader2 } from "lucide-react";
+import { fetchWithRetry } from "@/lib/apiClient";
 
 // Web Speech APIの型定義 (ブラウザ環境に依存するため)
 interface SpeechRecognition extends EventTarget {
@@ -142,7 +143,8 @@ export function CreateCarteForm() {
     formData.append('audio', audioBlob, 'counseling.webm');
 
     try {
-        const response = await fetch('http://localhost:5000/api/v2/analyze-audio', { method: 'POST', body: formData });
+        const response = await fetchWithRetry('http://localhost:5000/api/v2/analyze-audio', { method: 'POST', body: formData });
+
         if (!response.ok) {
             const errorData = await response.json();
             throw new Error(errorData.error || 'AI分析に失敗しました。');
@@ -154,6 +156,7 @@ export function CreateCarteForm() {
     } catch (err: any) {
         console.error("AI analysis error:", err);
         setError(err.message);
+        // The fetchWithRetry function will show a generic error toast on final failure
         toast.error(`分析エラー: ${err.message}`, { id: toastId });
     } finally {
         setIsAnalyzing(false);
@@ -179,7 +182,7 @@ export function CreateCarteForm() {
     };
 
     try {
-        const response = await fetch('http://localhost:5000/api/cartes', {
+        const response = await fetchWithRetry('http://localhost:5000/api/cartes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(carteData),
