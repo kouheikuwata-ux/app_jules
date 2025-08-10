@@ -9,4 +9,16 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+      },
+    },
+    watch: {
+      // Avoids server restart loops in some containerized environments
+      ignored: ['**/.env', '**/vite.config.ts'],
+    },
+  },
 })

@@ -41,7 +41,7 @@ export function CarteList() {
         setError(null);
         const toastId = showToast ? toast.loading("一覧を更新中...") : undefined;
         try {
-            const url = `http://localhost:5000/api/cartes?q=${encodeURIComponent(query)}`;
+            const url = `/api/cartes?q=${encodeURIComponent(query)}`;
             const response = await fetchWithRetry(url);
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({ error: 'カルテの取得に失敗しました。' }));
@@ -66,7 +66,7 @@ export function CarteList() {
     const handleDelete = async (carteId: number) => {
         const toastId = toast.loading("カルテを削除しています...");
         try {
-            const response = await fetchWithRetry(`http://localhost:5000/api/cartes/${carteId}`, {
+            const response = await fetchWithRetry(`/api/cartes/${carteId}`, {
                 method: 'DELETE',
             });
             if (!response.ok) {
