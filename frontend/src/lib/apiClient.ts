@@ -24,8 +24,9 @@ export async function fetchWithRetry(
             // For server-side errors (5xx), throw to trigger a retry
             throw new Error(`Server error: ${response.status}`);
 
-        } catch (error: any) {
-            console.error(`Attempt ${i + 1} failed: ${error.message}`);
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : "An unknown error occurred during fetch.";
+            console.error(`Attempt ${i + 1} failed: ${message}`);
             if (i === retries - 1) {
                 // Last retry failed, re-throw the error to be caught by the caller
                 toast.error(`サーバーへの接続に失敗しました。時間をおいて再試行してください。`);

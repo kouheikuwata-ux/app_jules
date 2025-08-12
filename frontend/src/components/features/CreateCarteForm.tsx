@@ -5,9 +5,24 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Mic, MicOff, Play, Square, Loader2 } from "lucide-react";
+import { Mic, MicOff, Loader2 } from "lucide-react";
 import { fetchWithRetry } from "@/lib/apiClient";
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api';
+
+interface SpeechRecognitionResult {
+    isFinal: boolean;
+    [key: number]: {
+        transcript: string;
+    };
+}
+interface SpeechRecognitionEvent extends Event {
+    resultIndex: number;
+    results: SpeechRecognitionResult[];
+}
+interface SpeechRecognitionErrorEvent extends Event {
+    error: string;
+}
 // Web Speech APIの型定義 (ブラウザ環境に依存するため)
 interface SpeechRecognition extends EventTarget {
     continuous: boolean;
@@ -15,12 +30,21 @@ interface SpeechRecognition extends EventTarget {
     lang: string;
     start(): void;
     stop(): void;
-    onresult: ((this: SpeechRecognition, ev: any) => any) | null;
-    onerror: ((this: SpeechRecognition, ev: any) => any) | null;
-    onend: ((this: SpeechRecognition, ev: Event) => any) | null;
+    onresult: ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => void) | null;
+    onerror: ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => void) | null;
+    onend: ((this: SpeechRecognition, ev: Event) => void) | null;
 }
-declare var SpeechRecognition: { prototype: SpeechRecognition; new(): SpeechRecognition; };
-declare var webkitSpeechRecognition: { prototype: SpeechRecognition; new(): SpeechRecognition; };
+declare const SpeechRecognition: { prototype: SpeechRecognition; new(): SpeechRecognition; };
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+declare const webkitSpeechRecognition: { prototype: SpeechRecognition; new(): SpeechRecognition; };
+
+interface AnalysisResult {
+    customer_requests: string;
+    hair_condition: string;
+    stylist_suggestions: string;
+    chosen_style: string;
+    confidence_score: number;
+}
 
 
 export function CreateCarteForm() {
@@ -34,9 +58,13 @@ export function CreateCarteForm() {
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [transcript, setTranscript] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<any>(null);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [photoFiles, setPhotoFiles] = useState<File[]>([]);
+  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+
 
   // --- REFS ---
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -143,7 +171,7 @@ export function CreateCarteForm() {
     formData.append('audio', audioBlob, 'counseling.webm');
 
     try {
-        const response = await fetchWithRetry('http://localhost:5000/api/v2/analyze-audio', { method: 'POST', body: formData });
+        const response = await fetchWithRetry(`${API_BASE_URL}/v2/analyze-audio`, { method: 'POST', body: formData });
 
         if (!response.ok) {
             const errorData = await response.json();
@@ -153,11 +181,12 @@ export function CreateCarteForm() {
         setAnalysisResult(result.analysis);
         setTranscript(result.transcription);
         toast.success("AI分析が完了しました。", { id: toastId });
-    } catch (err: any) {
+    } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "An unknown error occurred.";
         console.error("AI analysis error:", err);
-        setError(err.message);
+        setError(message);
         // The fetchWithRetry function will show a generic error toast on final failure
-        toast.error(`分析エラー: ${err.message}`, { id: toastId });
+        toast.error(`分析エラー: ${message}`, { id: toastId });
     } finally {
         setIsAnalyzing(false);
     }
@@ -178,11 +207,11 @@ export function CreateCarteForm() {
         email,
         counseling_content: transcript,
         ai_analysis: analysisResult,
-        photos: [],
+        photos: photoUrls,
     };
 
     try {
-        const response = await fetchWithRetry('http://localhost:5000/api/cartes', {
+        const response = await fetchWithRetry(`${API_BASE_URL}/cartes`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(carteData),
@@ -193,11 +222,59 @@ export function CreateCarteForm() {
         }
         toast.success("カルテが正常に保存されました。", { id: toastId });
         resetForm(); // Clear form for next entry
-    } catch (err: any) {
+    } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "An unknown error occurred.";
         console.error("Save carte error:", err);
-        toast.error(`保存エラー: ${err.message}`, { id: toastId });
+        toast.error(`保存エラー: ${message}`, { id: toastId });
     } finally {
         setIsSaving(false);
+    }
+  };
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files) {
+      setPhotoFiles(Array.from(event.target.files));
+    }
+  };
+
+  const handlePhotoUpload = async () => {
+    if (photoFiles.length === 0) {
+      toast.error("アップロードする写真を選択してください。");
+      return;
+    }
+
+    setIsUploading(true);
+    const toastId = toast.loading(`写真をアップロードしています... (0/${photoFiles.length})`);
+
+    const uploadPromises = photoFiles.map(async (file, index) => {
+      const formData = new FormData();
+      formData.append('photo', file);
+      const response = await fetchWithRetry(`${API_BASE_URL}/photos/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`写真 (${file.name}) のアップロードに失敗しました: ${errorData.error}`);
+      }
+
+      const result = await response.json();
+      toast.loading(`写真をアップロードしています... (${index + 1}/${photoFiles.length})`, { id: toastId });
+      return result.url;
+    });
+
+    try {
+      const urls = await Promise.all(uploadPromises);
+      setPhotoUrls(prev => [...prev, ...urls]);
+      toast.success("すべての写真がアップロードされました。", { id: toastId });
+      setPhotoFiles([]); // Clear the file input after upload
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "An unknown error occurred.";
+      console.error("Photo upload error:", err);
+      toast.error(message, { id: toastId });
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -258,9 +335,39 @@ export function CreateCarteForm() {
                 </Card>
             )}
         </div>
+
+        {/* Photo Management */}
+        <div className="space-y-4">
+            <h3 className="text-lg font-medium">4. 写真管理 (Before/After)</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <Label htmlFor="photo-upload">写真を選択</Label>
+                    <Input id="photo-upload" type="file" accept="image/*" multiple onChange={handleFileSelect} />
+                </div>
+                <Button onClick={handlePhotoUpload} disabled={photoFiles.length === 0 || isUploading} className="self-end">
+                    {isUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    アップロード
+                </Button>
+            </div>
+            {photoUrls.length > 0 && (
+                <div className="mt-4">
+                    <p className="text-sm font-medium mb-2">アップロード済み写真:</p>
+                    <div className="flex flex-wrap gap-4">
+                        {photoUrls.map((url, index) => (
+                            <img
+                                key={index}
+                                src={`${API_BASE_URL.replace('/api', '')}${url}`}
+                                alt={`Uploaded photo ${index + 1}`}
+                                className="h-24 w-24 object-cover rounded-md border"
+                            />
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
       </CardContent>
       <CardFooter className="flex justify-end">
-        <Button onClick={handleSaveCarte} size="lg" disabled={isSaving || !customerName}>
+        <Button onClick={handleSaveCarte} size="lg" disabled={isSaving || !customerName || isUploading}>
             {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             カルテを保存
         </Button>

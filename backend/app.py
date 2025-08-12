@@ -1,12 +1,13 @@
 import os
 import json
 import openai
-from flask import Flask, request, jsonify
+import click
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from dotenv import load_dotenv
-from database import get_db_connection
+from database import get_db_connection, init_db
 from werkzeug.utils import secure_filename
 import logging
 from crypto_utils import encrypt, decrypt
@@ -69,6 +70,41 @@ def process_carte_for_response(carte_row):
         except (json.JSONDecodeError, TypeError):
             carte['photos'] = []
     return carte
+
+# --- Photo Upload API ---
+IMAGE_UPLOAD_FOLDER = os.path.join(app.root_path, '..', 'uploads', 'images')
+os.makedirs(IMAGE_UPLOAD_FOLDER, exist_ok=True)
+
+@app.route('/api/photos/upload', methods=['POST'])
+@limiter.limit("60 per minute")
+def upload_photo():
+    if 'photo' not in request.files:
+        return jsonify({"error": "No photo file part"}), 400
+    file = request.files['photo']
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+    if file:
+        filename = secure_filename(file.filename)
+        # To avoid filename conflicts, append a timestamp
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        filename = f"{timestamp}_{filename}"
+
+        file_path = os.path.join(IMAGE_UPLOAD_FOLDER, filename)
+        file.save(file_path)
+
+        # Return the path that the frontend can use to fetch the image
+        photo_url = f'/uploads/images/{filename}'
+        return jsonify({"url": photo_url}), 201
+
+# Route to serve uploaded images
+@app.route('/uploads/images/<path:filename>')
+def serve_photo(filename):
+    # Construct the absolute path to the directory where images are stored
+    # app.root_path is the 'backend' folder, so we go up one level
+    image_dir = os.path.abspath(os.path.join(app.root_path, '..', 'uploads', 'images'))
+    return send_from_directory(image_dir, filename)
+
 
 # --- AI Analysis API ---
 
@@ -160,14 +196,31 @@ def create_carte():
 @app.route('/api/cartes', methods=['GET'])
 def get_all_cartes():
     query = request.args.get('q', '')
+    start_date = request.args.get('startDate')
+    end_date = request.args.get('endDate')
+
     conn = get_db_connection()
 
     sql_query = 'SELECT * FROM cartes'
     params = []
+    conditions = []
 
     if query:
-        sql_query += ' WHERE customer_name LIKE ? OR customer_name_kana LIKE ?'
+        conditions.append('(customer_name LIKE ? OR customer_name_kana LIKE ?)')
         params.extend([f'%{query}%', f'%{query}%'])
+
+    if start_date:
+        conditions.append('created_at >= ?')
+        params.append(start_date)
+
+    if end_date:
+        # To make the end date inclusive, we can check for the start of the next day
+        # or simply add a time component if the date format is YYYY-MM-DD.
+        conditions.append('created_at <= ?')
+        params.append(f'{end_date} 23:59:59')
+
+    if conditions:
+        sql_query += ' WHERE ' + ' AND '.join(conditions)
 
     sql_query += ' ORDER BY created_at DESC'
 
@@ -237,8 +290,17 @@ def delete_carte(carte_id):
     return jsonify({"message": "Carte deleted successfully"}), 200
 
 
+# --- CLI Commands ---
+@app.cli.command("init-db")
+@click.command(name="init-db")
+def init_db_command():
+    """Clear the existing data and create new tables."""
+    init_db()
+    click.echo("Initialized the database.")
+
+
 if __name__ == '__main__':
     if not client or not os.getenv("SECRET_KEY"):
         logging.error("Could not start Flask server. Check OPENAI_API_KEY and SECRET_KEY in .env file.")
     else:
-        app.run(debug=True, port=5000)
+        app.run(debug=True, port=5001)
