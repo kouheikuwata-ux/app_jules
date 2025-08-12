@@ -143,7 +143,7 @@ export function CreateCarteForm() {
     formData.append('audio', audioBlob, 'counseling.webm');
 
     try {
-        const response = await fetchWithRetry('http://localhost:5000/api/v2/analyze-audio', { method: 'POST', body: formData });
+        const response = await fetchWithRetry('/api/v2/analyze-audio', { method: 'POST', body: formData });
 
         if (!response.ok) {
             const errorData = await response.json();
@@ -182,7 +182,7 @@ export function CreateCarteForm() {
     };
 
     try {
-        const response = await fetchWithRetry('http://localhost:5000/api/cartes', {
+        const response = await fetchWithRetry('/api/cartes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(carteData),
