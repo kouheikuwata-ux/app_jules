@@ -5,10 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Loader2, Trash2, Eye, RefreshCw, Search, Pencil } from "lucide-react";
+import { Loader2, Trash2, Eye, RefreshCw, Search, Pencil, FileDown } from "lucide-react";
 import { fetchWithRetry } from "@/lib/apiClient";
 import { useDebounce } from "@/hooks/useDebounce";
 import { EditCarteForm } from "./EditCarteForm";
+import jsPDF from 'jspdf';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api';
 
@@ -90,6 +91,52 @@ export function CarteList() {
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : "An unknown error occurred.";
             toast.error(`削除エラー: ${message}`, { id: toastId });
+        }
+    };
+
+    const handlePdfExport = (carte: Carte) => {
+        try {
+            const doc = new jsPDF();
+            doc.setFont('helvetica', 'normal');
+
+            doc.setFontSize(20);
+            doc.text('Counseling Carte', 14, 22);
+
+            doc.setFontSize(12);
+            doc.text(`Customer: ${carte.customer_name}`, 14, 32);
+            doc.text(`Date: ${new Date(carte.created_at).toLocaleString('ja-JP')}`, 14, 38);
+            doc.line(14, 42, 196, 42);
+
+            let y = 50;
+            doc.setFontSize(14);
+            doc.text('Counseling Content', 14, y);
+            y += 6;
+            doc.setFontSize(10);
+            const counselingLines = doc.splitTextToSize(carte.counseling_content || 'N/A', 182);
+            doc.text(counselingLines, 14, y);
+            y += counselingLines.length * 4 + 6;
+
+            doc.line(14, y, 196, y);
+            y += 10;
+
+            doc.setFontSize(14);
+            doc.text('AI Analysis', 14, y);
+            y += 6;
+            doc.setFontSize(10);
+
+            if (carte.ai_analysis) {
+                const analysisText = `Customer Requests: ${carte.ai_analysis.customer_requests}\n\nHair Condition: ${carte.ai_analysis.hair_condition}\n\nStylist Suggestions: ${carte.ai_analysis.stylist_suggestions}\n\nChosen Style: ${carte.ai_analysis.chosen_style}\n\nConfidence: ${carte.ai_analysis.confidence_score?.toFixed(2)}`;
+                const analysisLines = doc.splitTextToSize(analysisText, 182);
+                doc.text(analysisLines, 14, y);
+            } else {
+                doc.text('No AI analysis available.', 14, y);
+            }
+
+            doc.save(`carte_${carte.id}_${carte.customer_name}.pdf`);
+            toast.success("PDFのダウンロードを開始しました。");
+        } catch (e) {
+            console.error("Failed to generate PDF", e);
+            toast.error("PDFの生成に失敗しました。");
         }
     };
 
@@ -209,9 +256,9 @@ export function CarteList() {
                                                 {carte.photos && carte.photos.length > 0 ? (
                                                     <div className="flex flex-wrap gap-4">
                                                         {carte.photos.map((url, index) => (
-                                                            <a href={`${API_BASE_URL.replace('/api', '')}${url}`} target="_blank" rel="noopener noreferrer" key={index}>
+                                                            <a href={url} target="_blank" rel="noopener noreferrer" key={index}>
                                                                 <img
-                                                                    src={`${API_BASE_URL.replace('/api', '')}${url}`}
+                                                                    src={url}
                                                                     alt={`photo ${index + 1}`}
                                                                     className="h-24 w-24 object-cover rounded-md border hover:opacity-75 transition-opacity"
                                                                 />
@@ -220,6 +267,9 @@ export function CarteList() {
                                                     </div>
                                                 ) : <p>関連写真はありません。</p>}
                                             </div>
+                                            <DialogFooter>
+                                                <Button variant="outline" onClick={() => handlePdfExport(carte)}><FileDown className="mr-2 h-4 w-4"/>PDF出力</Button>
+                                            </DialogFooter>
                                         </DialogContent>
                                     </Dialog>
                                     <AlertDialog>

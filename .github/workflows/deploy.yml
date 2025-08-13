@@ -1,0 +1,82 @@
+name: VoiceInsight CI/CD
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-test-and-lint:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    #---------------------------------
+    # Backend
+    #---------------------------------
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install backend dependencies
+      working-directory: ./backend
+      run: pip install -r requirements.txt
+
+    - name: Lint backend (flake8)
+      working-directory: ./backend
+      run: |
+        pip install flake8
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+    # - name: Test backend
+    #   working-directory: ./backend
+    #   env:
+    #     DATABASE_URL: "postgresql://user:password@localhost:5432/testdb"
+    #     # ... other env vars
+    #   run: |
+    #     # Placeholder for running backend tests with pytest
+    #     echo "Backend testing placeholder"
+
+    #---------------------------------
+    # Frontend
+    #---------------------------------
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+
+    - name: Install frontend dependencies
+      working-directory: ./frontend
+      run: npm install
+
+    - name: Lint frontend
+      working-directory: ./frontend
+      run: npm run lint
+
+    - name: Build frontend
+      working-directory: ./frontend
+      run: npm run build
+      env:
+        VITE_API_BASE_URL: /api
+
+    #---------------------------------
+    # Future Deployment Steps
+    #---------------------------------
+    # - name: Build and push Docker images
+    #   run: echo "Placeholder for building and pushing docker images"
+    #
+    # - name: Deploy to cloud
+    #   run: echo "Placeholder for deployment to AWS, GCP, etc."

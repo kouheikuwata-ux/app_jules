@@ -1,48 +1,58 @@
-import sqlite3
 import os
-
-# プロジェクトのルートを基準に instance フォルダとデータベースパスを構築
-INSTANCE_FOLDER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'instance')
-DATABASE_URL = os.path.join(INSTANCE_FOLDER_PATH, "voice_insight.db")
+import psycopg2
+from psycopg2.extras import DictCursor
 
 def get_db_connection():
-    """データベース接続を取得します。接続前に instance フォルダの存在を確認します。"""
-    os.makedirs(INSTANCE_FOLDER_PATH, exist_ok=True)
-    conn = sqlite3.connect(DATABASE_URL)
-    conn.row_factory = sqlite3.Row
+    """
+    Establishes a connection to the PostgreSQL database using the DATABASE_URL
+    environment variable.
+    """
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        raise ValueError("DATABASE_URL environment variable is not set.")
+
+    conn = psycopg2.connect(database_url)
     return conn
 
 def init_db():
-    """データベースを初期化し、テーブルを作成します。"""
-    # フォルダの存在確認は get_db_connection で行われる
+    """
+    Initializes the database by creating the 'cartes' table if it doesn't exist.
+    This version is for PostgreSQL.
+    """
     conn = get_db_connection()
-    cursor = conn.cursor()
+    with conn.cursor(cursor_factory=DictCursor) as cur:
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS cartes (
+            id SERIAL PRIMARY KEY,
+            customer_name VARCHAR(255) NOT NULL,
+            customer_name_kana VARCHAR(255),
+            phone_number TEXT,
+            email TEXT,
+            counseling_content TEXT,
+            ai_analysis JSONB,
+            photos JSONB,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+        """)
 
-    # cartesテーブルが存在しない場合に作成
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS cartes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        customer_name TEXT NOT NULL,
-        customer_name_kana TEXT,
-        phone_number TEXT,
-        email TEXT,
-        counseling_content TEXT,
-        ai_analysis TEXT,
-        photos TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    """)
+        cur.execute("""
+        CREATE OR REPLACE FUNCTION update_updated_at_column()
+        RETURNS TRIGGER AS $$
+        BEGIN
+           NEW.updated_at = NOW();
+           RETURN NEW;
+        END;
+        $$ language 'plpgsql';
+        """)
 
-    # updated_atを自動更新するためのトリガーを作成
-    cursor.execute("""
-    CREATE TRIGGER IF NOT EXISTS update_cartes_updated_at
-    AFTER UPDATE ON cartes
-    FOR EACH ROW
-    BEGIN
-        UPDATE cartes SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
-    END;
-    """)
+        cur.execute("""
+        DROP TRIGGER IF EXISTS update_cartes_updated_at ON cartes;
+        CREATE TRIGGER update_cartes_updated_at
+        BEFORE UPDATE ON cartes
+        FOR EACH ROW
+        EXECUTE FUNCTION update_updated_at_column();
+        """)
 
     conn.commit()
     conn.close()

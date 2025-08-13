@@ -3,6 +3,7 @@ import { Toaster } from "@/components/ui/sonner"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CreateCarteForm } from "@/components/features/CreateCarteForm"
 import { CarteList } from "@/components/features/CarteList"
+import { Dashboard } from "@/components/features/Dashboard"
 import { Button } from "./components/ui/button"
 import { Moon, Sun } from "lucide-react"
 import { useTheme } from "next-themes"
@@ -36,9 +37,10 @@ function App() {
 
         <main className="container mx-auto p-4 md:p-8">
           <Tabs defaultValue="create-carte" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="create-carte">カルテ作成</TabsTrigger>
               <TabsTrigger value="carte-list">カルテ一覧</TabsTrigger>
+              <TabsTrigger value="dashboard">ダッシュボード</TabsTrigger>
             </TabsList>
 
             <TabsContent value="create-carte">
@@ -47,6 +49,10 @@ function App() {
 
             <TabsContent value="carte-list">
               <CarteList />
+            </TabsContent>
+
+            <TabsContent value="dashboard">
+              <Dashboard />
             </TabsContent>
           </Tabs>
         </main>

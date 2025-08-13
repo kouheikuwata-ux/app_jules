@@ -356,7 +356,7 @@ export function CreateCarteForm() {
                         {photoUrls.map((url, index) => (
                             <img
                                 key={index}
-                                src={`${API_BASE_URL.replace('/api', '')}${url}`}
+                                src={url}
                                 alt={`Uploaded photo ${index + 1}`}
                                 className="h-24 w-24 object-cover rounded-md border"
                             />
