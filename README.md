@@ -10,6 +10,36 @@ This is a counseling system for hair stylists, equipped with AI voice analysis.
 
 ## セットアップと実行方法
 
+### Dockerを使った推奨セットアップ
+
+これが最も簡単で推奨される実行方法です。
+
+1.  **DockerとDocker Composeをインストールします。**
+
+2.  **環境変数を設定します:**
+    - `backend/.env.example` を `backend/.env` にコピーします。
+    - `backend/.env` ファイルを開き、`SECRET_KEY`とあなたの`OPENAI_API_KEY`を設定します。
+      - `SECRET_KEY`は `python backend/generate_key.py` を実行して生成できます。
+
+3.  **Dockerコンテナをビルドして起動します:**
+    - リポジトリのルートディレクトリで以下のコマンドを実行します。
+    ```bash
+    docker-compose up --build
+    ```
+    - 初回起動には数分かかることがあります。
+
+4.  **アプリケーションへのアクセス:**
+    - ブラウザで `http://localhost:5173` を開きます。
+
+5.  **アプリケーションの停止:**
+    ```bash
+    docker-compose down
+    ```
+
+---
+
+### 手動セットアップ（開発者向け）
+
 ### 1. 前提条件
 
 - Node.js (v18以降推奨)

@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Mic, MicOff, Play, Square, Loader2 } from "lucide-react";
-import { fetchWithRetry } from "@/lib/apiClient";
+import { fetchWithRetry, API_BASE_URL } from "@/lib/apiClient";
 
 // Web Speech APIの型定義 (ブラウザ環境に依存するため)
 interface SpeechRecognition extends EventTarget {
@@ -143,7 +143,7 @@ export function CreateCarteForm() {
     formData.append('audio', audioBlob, 'counseling.webm');
 
     try {
-        const response = await fetchWithRetry('http://localhost:5000/api/v2/analyze-audio', { method: 'POST', body: formData });
+        const response = await fetchWithRetry(`${API_BASE_URL}/api/v2/analyze-audio`, { method: 'POST', body: formData });
 
         if (!response.ok) {
             const errorData = await response.json();
@@ -182,7 +182,7 @@ export function CreateCarteForm() {
     };
 
     try {
-        const response = await fetchWithRetry('http://localhost:5000/api/cartes', {
+        const response = await fetchWithRetry(`${API_BASE_URL}/api/cartes`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(carteData),

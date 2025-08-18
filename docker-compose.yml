@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    ports:
+      - "5000:5000"
+    volumes:
+      # The named volume will persist the database file.
+      - sqlite_db_data:/app/voice_insight.db
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # This URL points to the backend service within the Docker network
+        VITE_API_URL: http://backend:5000
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  sqlite_db_data:
+    # This defines the named volume for data persistence.

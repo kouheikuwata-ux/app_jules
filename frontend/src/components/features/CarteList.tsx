@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Loader2, Trash2, Eye, RefreshCw, Search } from "lucide-react";
-import { fetchWithRetry } from "@/lib/apiClient";
+import { fetchWithRetry, API_BASE_URL } from "@/lib/apiClient";
 import { useDebounce } from "@/hooks/useDebounce";
 
 // Define the type for a single carte record
@@ -41,7 +41,7 @@ export function CarteList() {
         setError(null);
         const toastId = showToast ? toast.loading("一覧を更新中...") : undefined;
         try {
-            const url = `http://localhost:5000/api/cartes?q=${encodeURIComponent(query)}`;
+            const url = `${API_BASE_URL}/api/cartes?q=${encodeURIComponent(query)}`;
             const response = await fetchWithRetry(url);
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({ error: 'カルテの取得に失敗しました。' }));
@@ -66,7 +66,7 @@ export function CarteList() {
     const handleDelete = async (carteId: number) => {
         const toastId = toast.loading("カルテを削除しています...");
         try {
-            const response = await fetchWithRetry(`http://localhost:5000/api/cartes/${carteId}`, {
+            const response = await fetchWithRetry(`${API_BASE_URL}/api/cartes/${carteId}`, {
                 method: 'DELETE',
             });
             if (!response.ok) {
